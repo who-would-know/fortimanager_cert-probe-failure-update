@@ -1,0 +1,1 @@
+pyinstaller --onefile --icon=default.ico fmg-ssl-profile-cert-probe-update.py
