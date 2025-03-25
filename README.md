@@ -24,8 +24,8 @@ This script automates the process of logging into **FortiManager**, updating the
 
 1. **Clone the repository** to your local machine (Windows if creating a Windows EXE)
    ```bash
-   git clone https://github.com/your-repo-name.git
-   cd your-repo-name
+   git clone https://github.com/who-would-know/fortimanager_cert-probe-failure-update.git
+   cd fortimanager_cert-probe-failure-update
    ```
 2. **Install** `pyinstaller`:
    ```bash
