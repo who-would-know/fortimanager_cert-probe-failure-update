@@ -104,12 +104,10 @@ def fmg_login(hostAPIUSER, hostPASSWD, hostIP):
         print ('--> Logging into FortiManager: %s' % hostIP)
         # HTTP & JSON code & message
         print ('<-- HTTPcode: %d JSONmesg: %s' % (r.status_code, json_resp['result'][0]['status']['message']))
-        print
     else:
         print ('<--Username or password is not valid, please try again, exiting...')
         # HTTP & JSON code & message
         print ('<-- HTTPcode: %d JSONmesg: %s' % (r.status_code, json_resp['result'][0]['status']['message']))
-        print
         # Exit Program, Username or Password is not valided or internal FortiManager error review Hcode & Jmesg
         sys.exit(1)
 
@@ -221,7 +219,7 @@ def workspace_commit(cADOM):
     print("\n")
     print ('--> Saving changes for ADOM %s' % cADOM)
     print ('<-- Hcode: %d Jmesg: %s' % (r.status_code, json_resp['result'][0]['status']['message']))
-    print ("\n")
+    # print ("\n")
 
 def workspace_unlock(uADOM):
     json_url = "pm/config/adom/" + uADOM + "/_workspace/unlock"
@@ -235,6 +233,7 @@ def workspace_unlock(uADOM):
     }
     r = requests.post(url, json=body, verify=False)
     json_resp = json.loads(r.text)
+    print ("\n")
     print ('--> Unlocking ADOM %s' % uADOM)
     print ('<-- Hcode: %d Jmesg: %s' % (r.status_code, json_resp['result'][0]['status']['message']))
     print ("\n")
@@ -283,7 +282,7 @@ def status_taskid():
         print ('    Current task percentage: (%d)' % totalPercent)
         print
 
-def poll_taskid ():
+def poll_taskid (csADOM):
     global state
     state = 0
     while state not in [3,4,5,7]:
@@ -296,7 +295,7 @@ def poll_taskid ():
     else:
         print ('--> Task %s is DIRTY, check FMG task manager for details!' % taskID)
         print ('    Adding this ADOM to the error log %s !' % ERRORlog.name)
-        ERRORlog.write("%s %s %s\n" % (fmgADOM, taskID, state))
+        ERRORlog.write("%s %s %s\n" % (csADOM, taskID, state))
         print
 
 def create_adomrev(fmgADOM, hostADMIN):
@@ -333,6 +332,7 @@ def check_adom(adom):
         }],
         "session": session
     }
+    print("\n")
     print(f'<-- Checking ADOM {adom}')    
     # Test HTTPS connection to host then Capture and output any errors
     try:
@@ -417,7 +417,7 @@ def installPOLICY(pADOM):
             print ('<-- Hcode: %d Jmesg: %s' % (r2.status_code, json_resp2['result'][0]['status']['message']))
             print
             time.sleep( 0.3 )
-            poll_taskid()
+            poll_taskid(pADOM)
             print ('--> Policy Install Completed for Policy Package %s on ADOM %s. Check logs & Task Monitor for Errors' % (pp, pADOM))
     ###END LOOP
     
@@ -556,6 +556,110 @@ def remove_oid(data):
         for item in data:
             remove_oid(item)  # Recursively check list elements
 
+def get_policy_packages(csADOM):
+    policy_pkg_list = []
+
+    json_url = 'pm/pkg/adom/' + csADOM
+    body = {
+        "id": 1,
+        "method": "get",
+        "params": [{
+            "url": json_url
+        }],
+        "session": session
+    }
+    r = requests.post(url, json=body, verify=False)
+    json_resp = json.loads(r.text)
+    # print(f'GET policy package {json.dumps(json_resp, indent=2)}')
+    print ('--> Getting Policy Packages for ADOM: %s' % (csADOM))
+    print ('<-- Hcode: %d Jmesg: %s' % (r.status_code, json_resp['result'][0]['status']['message']))    
+    
+    for entry in json_resp['result'][0]['data']:
+        # print(f'policy packages {entry["name"]}')
+        policy_pkg_list.append(entry['name'])
+    
+    if policy_pkg_list:
+        print("\n")
+        print ('--> Policy packages for ADOM: %s found: %s' % (csADOM, policy_pkg_list))
+        print ('<-- Hcode: %d Jmesg: %s' % (r.status_code, json_resp['result'][0]['status']['message']))        
+    else:
+        print("\n")
+        print ('--> No Policy Packages found for ADOM: %s' % (csADOM))
+        print ('<-- Hcode: %d Jmesg: %s' % (r.status_code, json_resp['result'][0]['status']['message']))    
+    
+    return policy_pkg_list
+
+def update_fw_policy_ssl(csADOM, policyPKG):
+    cert_inspect_profile = "certificate-inspection"
+    profile = "ENC_Options01"
+    pkg_updated = False
+
+    print("\n")
+    print("--> Processing ADOM: %s Policy Packages..." % (csADOM))
+
+    for pkg_name in policyPKG:
+        json_url = 'pm/config/adom/' + csADOM + '/pkg/' + pkg_name + '/firewall/policy'
+        body = {
+            "id": 1,
+            "method": "get",
+            "params": [{
+                "fields": [
+                    "policyid",
+                    "ssl-ssh-profile",
+                ],
+                "filter": [
+                    "ssl-ssh-profile", "==", cert_inspect_profile
+                ],
+                "url": json_url
+            }],
+            "session": session
+        }
+        r = requests.post(url, json=body, verify=False)
+        json_resp = json.loads(r.text)
+        # print(f'GET policy package {json.dumps(json_resp, indent=2)}')
+
+        # Updating the individual policies for pkg
+        if json_resp['result'][0]['data']:
+            print("\n")
+            print ('--> Policy packages for ADOM: %s found policies in PKG: %s to update...' % (csADOM,pkg_name))
+
+            for entry in json_resp['result'][0]['data']:
+                # Update policy
+                json_url2 = 'pm/config/adom/' + csADOM + '/pkg/' + pkg_name + '/firewall/policy'
+                body2 = {
+                    "id": 1,
+                    "method": "update",
+                    "params": [{
+                        "data": {
+                            "policyid": entry['policyid'],
+                            "ssl-ssh-profile": profile
+                        },
+                        "url": json_url2
+                    }],
+                    "session": session
+                }
+                r2 = requests.post(url, json=body2, verify=False)
+                json_resp2 = json.loads(r2.text)
+                # print(f'Policy Package results... {json.dumps(json_resp2, indent=2)}')
+
+                # Verify success or not
+                if json_resp2['result'][0]['status']['code'] != -11:
+                    print("\n")
+                    print ("--> Updated Policy id: %s in PKG: %s for ADOM: %s" % (entry['policyid'], pkg_name, csADOM))
+                    pkg_updated = True
+                else:
+                    print("\n")
+                    print ("--> ERROR Updating Policy id: %s in PKG: %s for ADOM: %s ", (entry['policyid'], pkg_name, csADOM))
+                    ERRORlog.write("--> ERROR Updating Policy id: %s in PKG: %s for ADOM: %s ", (entry['policyid'], pkg_name, csADOM))
+            # Save/Commit if changes done
+            if pkg_updated:
+                workspace_commit(csADOM)
+                pkg_updated = False
+        else:
+            print("\n")
+            print ('--> No policies found needing update in Policy PKG: %s for ADOM: %s' % (pkg_name, csADOM))
+
+
 ##########
 #### MAIN
 ##########
@@ -591,7 +695,7 @@ def main():
     print ('    Using: %s' % secret)
 
     # Option for user
-    while (default_userOPTION := input("\nPlease select from the following options: (type 1 or 2) \n 1) Update SSL Certificate Profile & Firewall Policies in one ADOM \n 2) RUpdate SSL Certificate Profile & Firewall Policies for multiple ADOMs based on the FortiGate Cluster Device Name\n ")).strip() not in ["1", "2"]:
+    while (default_userOPTION := input("\nPlease select from the following options: (type 1 or 2) \n 1) Update SSL Certificate Profile & Firewall Policies in one ADOM \n 2) Update SSL Certificate Profile & Firewall Policies for multiple ADOMs based on the FortiGate Cluster Device Name\n ")).strip() not in ["1", "2"]:
         print("\nInvalid option. Please try again.")
     print(f"You selected option {default_userOPTION}\n")
 
@@ -623,8 +727,6 @@ def main():
         case "1":
             # Check ADOM exists
             check_adom(adomNAME)
-            # Check Clone Profile Exists, update
-            print(f'check clone exists {check_clone_profile(adomNAME)}')
 
             #Lock ADOM
             workspace_lock(adomNAME)
@@ -635,12 +737,24 @@ def main():
             else:
                 clone_ssl_profile(adomNAME)
 
+            #Get Policy Packages
+            policy_packages = get_policy_packages(adomNAME)
+
+            #Get SSL Profiles in Policy
+            if policy_packages:
+                update_fw_policy_ssl(adomNAME, policy_packages)
+                #Install Policy
+                installPOLICY(adomNAME)
+            else:
+                print("\n")
+                print ('--> No Policy Packages found for ADOM: %s, skipping ADOM ssl profile updates' % (adomNAME))
+
             #UnLock ADOM
             workspace_unlock(adomNAME)
 
-            #check
-            profileNAME="ENC_Options01"
-            get_ssl_profile_config(adomNAME, profileNAME)
+            # #check
+            # profileNAME="ENC_Options01"
+            # get_ssl_profile_config(adomNAME, profileNAME)
 
         case "2":
             # Get ADOM list based on FortiGate Device
@@ -662,6 +776,18 @@ def main():
                     update_cert_probe_failure(myadom)
                 else:
                     clone_ssl_profile(myadom)
+
+                # Get Policy Packages
+                policy_packages = get_policy_packages(myadom)
+
+                # Get SSL Profiles in Policy
+                if policy_packages:
+                    update_fw_policy_ssl(myadom, policy_packages)
+                    #Install Policy
+                    installPOLICY(myadom)
+                else:
+                    print("\n")
+                    print ('--> No Policy Packages found for ADOM: %s, skipping ADOM ssl profile updates' % (myadom))
 
                 #UnLock ADOM
                 workspace_unlock(myadom)

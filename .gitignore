@@ -1,4 +1,6 @@
 build
 mainLOG.txt
 ERRORlog.txt
+dist/mainLOG.txt
+dist/ERRORlog.txt
 fmg-address-rename.spec
