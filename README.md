@@ -1,5 +1,5 @@
 FortiManager Update SSL Profile cert-probe-failure = allow
-This script automates the process of logging into FortiManager, updating SSL Profile to cert-probe-failure = allow, (coming soon, finding Firewall Policies and updating with new SSL Profile)
+This script automates the process of logging into FortiManager, updating SSL Profile to cert-probe-failure = allow, updating policies with new profile, installing policy package
 
 Description
 The script streamlines the process of managing address objects in FortiManager by:
@@ -7,7 +7,8 @@ The script streamlines the process of managing address objects in FortiManager b
     Logging into FortiManager
     Checks if a clone ssl inspection profile of certificate-inspection exists or not
     Update clone ssl profile or create then update ssl profile with cert-probe-failure = allow from default
-    (Coming soon...Find Firewall Policies and update with new SSL Profile)
+    Find Firewall Policies with certificate-inspection and update with new SSL Profile
+    Installs ADOM Policy Package with changes
 
 Usage
 
