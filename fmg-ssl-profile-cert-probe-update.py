@@ -481,6 +481,56 @@ def update_cert_probe_failure(csADOM):
     ###Save SSL-SSH Inspection Changes
     workspace_commit(csADOM)
 
+def update_profile_comments(csADOM):
+    profile_deep_name = "deep-inspection"
+    profile_deep_comment = "Read-only SSL deep inspection profile. DO NOT USE"
+    profile_cert_name = "certificate-inspection"
+    profile_cert_comment = "Read-only SSL handshake inspection profile. DO NOT USE"
+
+    #Update deep inspect profile
+    json_url = "/pm/config/adom/" + csADOM + "/obj/firewall/ssl-ssh-profile/" + profile_deep_name
+    body = {
+            "id": 1,
+            "method": "update",
+            "params": [{
+                "data": {
+                    "comment": profile_deep_comment
+                },
+                "url": json_url
+            }],
+            "session": session
+    }
+    r = requests.post(url, json=body, verify=False)
+    json_resp = json.loads(r.text)
+
+    print("\n")
+    print ('--> Updating SSL-SSH Profile %s comments for ADOM %s' % (profile_deep_name, csADOM))
+    print ('<-- Hcode: %d Jmesg: %s' % (r.status_code, json_resp['result'][0]['status']['message']))
+
+    #Update cert inspect profile
+    json_url = "/pm/config/adom/" + csADOM + "/obj/firewall/ssl-ssh-profile/" + profile_cert_name
+    body = {
+            "id": 1,
+            "method": "update",
+            "params": [{
+                "data": {
+                    "comment": profile_cert_comment
+                },
+                "url": json_url
+            }],
+            "session": session
+    }
+    r = requests.post(url, json=body, verify=False)
+    json_resp = json.loads(r.text)
+
+    print("\n")
+    print ('--> Updating SSL-SSH Profile %s comments for ADOM %s' % (profile_cert_name, csADOM))
+    print ('<-- Hcode: %d Jmesg: %s' % (r.status_code, json_resp['result'][0]['status']['message']))      
+
+    ###Save SSL-SSH Inspection Comment Changes
+    workspace_commit(csADOM)
+
+
 def get_ssl_profile_config(csADOM, profileNAME):
     #Get SSL Profile configs
     json_url = "/pm/config/adom/" + csADOM + "/obj/firewall/ssl-ssh-profile/" + profileNAME #+ "/https"
@@ -499,53 +549,36 @@ def get_ssl_profile_config(csADOM, profileNAME):
 def clone_ssl_profile(csADOM):
     profile_name = "certificate-inspection"
     clone_profile_name = "ENC_Options01"
-    comment_update = "New SSL Profile to Use. cert-probe-failure to allow."
+    comment_update = "General Use Certificate Inspection"
     revision_note = "Creating clone of certificate-inspection with cert-probe-failure updated"
 
-    # Get profile data
+    # clone profile
     json_url = "/pm/config/adom/" + csADOM + "/obj/firewall/ssl-ssh-profile/" + profile_name
     body = {
             "id": 1,
-            "method": "get",
+            "method": "clone",
             "params": [{
+                "data": {
+                    "name": clone_profile_name,
+                    "comment": comment_update
+                },
                 "url": json_url
             }],
             "session": session
     }
     r = requests.post(url, json=body, verify=False)
     json_resp = json.loads(r.text)
-    # print(f'GET profile for cloning... {json_resp}')    
-
-    profile_config = json_resp['result'][0]['data']
-    #Update Name of profile
-    profile_config['name'] = clone_profile_name
-    profile_config['comment'] = comment_update
-    profile_config['https']['cert-probe-failure'] = 1
-    remove_oid(profile_config)
-    # print(f'\n PROFILE DUMP {profile_config}')
-
-    #Create new profile
-    json_url2 = "/pm/config/adom/" + csADOM + "/obj/firewall/ssl-ssh-profile"
-    body2 = {
-            "id": 1,
-            "method": "add",
-            "params": [{
-                "data": profile_config,
-                "revision note": revision_note,
-                "url": json_url2
-            }],
-            "session": session
-    }
-    r2 = requests.post(url, json=body2, verify=False)
-    json_resp2 = json.loads(r2.text)
-    # print(f'\nNEW Profile for cloning... {json_resp2}')    
+    # print(f'Clone profile for cloning... {json_resp}')    
 
     print("\n")
     print ('--> Cloning SSL-SSH Profile certificate-inspection to ENC_Options01 with cert-probe-failure allow for ADOM %s' % (csADOM))
-    print ('<-- Hcode: %d Jmesg: %s' % (r2.status_code, json_resp2['result'][0]['status']['message']))    
+    print ('<-- Hcode: %d Jmesg: %s' % (r.status_code, json_resp['result'][0]['status']['message']))    
 
     ###Save SSL-SSH Inspection Changes
     workspace_commit(csADOM)
+
+    ### Update
+    update_cert_probe_failure(csADOM)
 
 def remove_oid(data):
     if isinstance(data, dict):
@@ -734,8 +767,10 @@ def main():
             # if it doesn't exist, clone profile
             if check_clone_profile(adomNAME): 
                 update_cert_probe_failure(adomNAME)
+                update_profile_comments(adomNAME)
             else:
                 clone_ssl_profile(adomNAME)
+                update_profile_comments(adomNAME)
 
             #Get Policy Packages
             policy_packages = get_policy_packages(adomNAME)
@@ -766,7 +801,7 @@ def main():
             continue_script()
 
             # Process ADOMs
-            addressNAMELIST = []
+            # addressNAMELIST = []
             for myadom in adomLIST:
                 #Lock ADOM
                 workspace_lock(myadom)
@@ -774,8 +809,10 @@ def main():
                 # Check if Clone Profile exists, if not created it. 
                 if check_clone_profile(myadom): 
                     update_cert_probe_failure(myadom)
+                    update_profile_comments(myadom)
                 else:
                     clone_ssl_profile(myadom)
+                    update_profile_comments(myadom)
 
                 # Get Policy Packages
                 policy_packages = get_policy_packages(myadom)
