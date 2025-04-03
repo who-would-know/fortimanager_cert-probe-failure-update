@@ -455,17 +455,93 @@ def check_clone_profile(csADOM):
             return True
     return False
 
+#Update all profiles that are not default - certificate-inspection, deep-inspection, no-inspection
+def update_all_profiles(csADOM):
+    #VARS
+    sslPROFILE = []
+    read_only_profile = ['certificate-inspection', 'deep-inspection', 'no-inspection']
+
+    #####Get SSL-SSH-Profile Names
+    json_url = "/pm/config/adom/" + csADOM + "/obj/firewall/ssl-ssh-profile"
+    body = {
+    "id": 1,
+            "method": "get",
+            "params": [{
+                    "url": json_url,
+            }],
+            "session": session
+    }
+    r = requests.post(url, json=body, verify=False)
+    json_resp = json.loads(r.text)
+    ###print(json_resp['result'][0]['data']['name'])
+    # Get profile name and create a list
+    for entry in json_resp['result'][0]['data']:
+        #Check if status = cert_inspection, do updates
+        if entry['https']['status'] == 1:
+            sslPROFILE.append(entry['name'])
+
+    # Go through the profiles and if not default read-only update cert-probe-failure allow, cert-validation-failure allow
+    for i, profile in enumerate(sslPROFILE):
+        if profile not in read_only_profile:
+            json_url2 = "/pm/config/adom/" + csADOM + "/obj/firewall/ssl-ssh-profile/" + profile
+            body = {
+            "id": 1,
+                    "method": "update",
+                    "params": [{
+                        "data": {
+                            "https": {
+                                "cert-probe-failure": 1,
+                                "cert-validation-failure": 0,
+                            }
+                        },
+                            "url": json_url2,
+                    }],
+                    "session": session
+            }
+            r2 = requests.post(url, json=body, verify=False)
+            json_resp2 = json.loads(r2.text)
+            print("\n")
+            print ('--> Updating SSL-SSH Profile %s to cert-probe-failure allow & set cert-validation-failure allow for ADOM %s' % (profile, csADOM))
+            print ('<-- Hcode: %d Jmesg: %s' % (r2.status_code, json_resp2['result'][0]['status']['message']))    
+
+    ###Save SSL-SSH Inspection Changes
+    workspace_commit(csADOM)
+
 def update_cert_probe_failure(csADOM):
     profile = "ENC_Options01"
 
     #Update cert-probe-failure to allow (not default)
-    json_url = "/pm/config/adom/" + csADOM + "/obj/firewall/ssl-ssh-profile/" + profile + "/https"
+    json_url = "/pm/config/adom/" + csADOM + "/obj/firewall/ssl-ssh-profile/" + profile # + "/https"
     body = {
             "id": 1,
             "method": "update",
             "params": [{
                 "data": {
-                    "cert-probe-failure": 1
+                    "https": {
+                        "cert-probe-failure": 1,
+                        "cert-validation-failure": 0,
+                        # "unsupported-ssl-version": 1,
+                        "status": 1,
+                        "ports": 443,
+                    },
+                    "ftps": {
+                        "status": 0,
+                    },
+                    "imaps": {
+                        "status": 0,
+                    },
+                    "pop3s": {
+                         "status": 0,
+                    },
+                    "smtps": {
+                         "status": 0,
+                    },
+                    "ssh": {
+                         "status": 0,
+                    },
+                    "dot": {
+                         "status": 0,
+                    }
                 },
                 "url": json_url
             }],
@@ -768,9 +844,11 @@ def main():
             if check_clone_profile(adomNAME): 
                 update_cert_probe_failure(adomNAME)
                 update_profile_comments(adomNAME)
+                update_all_profiles(adomNAME)
             else:
                 clone_ssl_profile(adomNAME)
                 update_profile_comments(adomNAME)
+                update_all_profiles(adomNAME)
 
             #Get Policy Packages
             policy_packages = get_policy_packages(adomNAME)
@@ -810,9 +888,11 @@ def main():
                 if check_clone_profile(myadom): 
                     update_cert_probe_failure(myadom)
                     update_profile_comments(myadom)
+                    update_all_profiles(myadom)
                 else:
                     clone_ssl_profile(myadom)
                     update_profile_comments(myadom)
+                    update_all_profiles(myadom)
 
                 # Get Policy Packages
                 policy_packages = get_policy_packages(myadom)
