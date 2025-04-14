@@ -285,13 +285,17 @@ def status_taskid():
 def poll_taskid (csADOM):
     global state
     state = 0
-    while state not in [3,4,5,7]:
+    while state not in [3,4,5,7,8]:
         print ('--> Polling task: %s' % taskID)
         time.sleep( 3 )
         status_taskid()
-    if state == 4:
-        print ('--> Task %s is done!' % taskID)
-        print
+    if state == 4 or state == 8:
+        if state == 4:
+            print ('--> Task %s is done!' % taskID)
+            print
+        if state == 8:
+            print ('--> Task %s completed but with warnings, check System Settings -> Task Monitor for details' % taskID)
+            print
     else:
         print ('--> Task %s is DIRTY, check FMG task manager for details!' % taskID)
         print ('    Adding this ADOM to the error log %s !' % ERRORlog.name)
@@ -477,8 +481,12 @@ def update_all_profiles(csADOM):
     # Get profile name and create a list
     for entry in json_resp['result'][0]['data']:
         #Check if status = cert_inspection, do updates
-        if entry['https']['status'] == 1:
-            sslPROFILE.append(entry['name'])
+        # Updated to do a get check before as some profiles do not follow the standard format of fields
+        https_info = entry.get('https', {})
+        if https_info.get('status') == 1:
+            sslPROFILE.append(entry.get('name'))
+        # if entry['https']['status'] == 1:
+        #     sslPROFILE.append(entry['name'])
 
     # Go through the profiles and if not default read-only update cert-probe-failure allow, cert-validation-failure allow
     for i, profile in enumerate(sslPROFILE):
